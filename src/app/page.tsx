@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StepId, PedagogicalAnalysis } from '@/types/aliakit';
-import { SAMPLE_TASKS, SampleTask } from '@/data/samples';
+import { SampleTask } from '@/data/samples';
 import Header from '@/components/Header';
 import StepWelcome from '@/components/steps/StepWelcome';
 import StepCapture from '@/components/steps/StepCapture';
@@ -10,7 +10,7 @@ import StepOcrReview from '@/components/steps/StepOcrReview';
 import StepAdaptedGuide from '@/components/steps/StepAdaptedGuide';
 import StepCompleted from '@/components/steps/StepCompleted';
 import SampleTasksModal from '@/components/SampleTasksModal';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 
 export default function HomePage() {
   const [currentStep, setCurrentStep] = useState<StepId>('welcome');
@@ -19,9 +19,10 @@ export default function HomePage() {
   const [analysis, setAnalysis] = useState<PedagogicalAnalysis | null>(null);
   const [isProcessingOcr, setIsProcessingOcr] = useState<boolean>(false);
   const [ocrProgress, setOcrProgress] = useState<number>(0);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [isSampleModalOpen, setIsSampleModalOpen] = useState<boolean>(false);
 
-  // Ir a inicio y restablecer
+  // ─── Reset ────────────────────────────────────────────────────────────────
   const handleReset = () => {
     setCurrentStep('welcome');
     setImageSrc(null);
@@ -29,96 +30,80 @@ export default function HomePage() {
     setAnalysis(null);
     setIsProcessingOcr(false);
     setOcrProgress(0);
+    setAnalyzeError(null);
   };
 
-  // Paso 1 -> 2: Iniciar cámara
-  const handleStartCamera = () => {
-    setCurrentStep('capture');
-  };
+  // ─── Paso 1 → 2: Iniciar captura ─────────────────────────────────────────
+  const handleStartCamera = () => setCurrentStep('capture');
+  const handleSelectImage = () => setCurrentStep('capture');
 
-  // Paso 1 -> 2: Elegir imagen
-  const handleSelectImage = () => {
-    setCurrentStep('capture');
-  };
-
-  // Paso 2: Imagen seleccionada
-  const handleImageSelected = (base64: string) => {
+  // ─── Paso 2: Imagen seleccionada → arrancar OCR ──────────────────────────
+  const handleImageSelected = useCallback(async (base64: string) => {
     setImageSrc(base64);
-    // En la Fase 1, preparamos el paso hacia la revisión de OCR
-    // y si no hay texto previo, sugerimos un texto para poder editarlo
-    if (!taskText) {
-      setTaskText('Leé la consigna y completá los ejercicios que pide la actividad.');
-    }
-  };
-
-  // Paso 2 -> 3: Continuar a revisión
-  const handleContinueToReview = () => {
+    setTaskText('');
+    setOcrProgress(0);
+    setIsProcessingOcr(true);
     setCurrentStep('ocr_review');
-  };
 
-  // Paso 3 -> 4 & 5: Analizar tarea
-  const handleAnalyze = () => {
+    try {
+      // Carga dinámica de Tesseract.js para no penalizar el bundle inicial
+      const { createWorker } = await import('tesseract.js');
+
+      // Idiomas: spa (español) + eng (inglés) — cubre el 95% de las tareas escolares
+      const worker = await createWorker('spa+eng', 1, {
+        // No registramos nada sensible en logs de producción
+        logger: (m: { status: string; progress: number }) => {
+          if (m.status === 'recognizing text') {
+            setOcrProgress(Math.round(m.progress * 100));
+          }
+        },
+      });
+
+      const { data } = await worker.recognize(base64);
+      await worker.terminate();
+
+      const text = (data.text || '').trim();
+      setTaskText(text);
+      setIsProcessingOcr(false);
+      setOcrProgress(100);
+    } catch {
+      setIsProcessingOcr(false);
+      setOcrProgress(0);
+      setTaskText('');
+    }
+  }, []);
+
+  // ─── Paso 2 → 3: Continuar a revisión ────────────────────────────────────
+  const handleContinueToReview = () => setCurrentStep('ocr_review');
+
+  // ─── Paso 3 → 4–5: Analizar con Gemini ───────────────────────────────────
+  const handleAnalyze = useCallback(async () => {
+    setAnalyzeError(null);
     setCurrentStep('analyzing');
 
-    // En Fase 1 (previo a conectar Gemini en Fase 3),
-    // si el texto coincide con una muestra usamos su análisis, de lo contrario
-    // generamos una adaptación pedagógica representativa para probar la interfaz
-    setTimeout(() => {
-      // Buscar si coincide con alguna muestra
-      const matchedSample = SAMPLE_TASKS.find(
-        (s) => s.sampleText.trim() === taskText.trim()
-      );
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: taskText }),
+      });
 
-      if (matchedSample) {
-        setAnalysis(matchedSample.analysis);
-      } else {
-        // Adaptación estructurada representativa (Fase 1)
-        const isEnglish = /complete|sentences|verb|read/i.test(taskText);
-        const isMath = /\d+|\+|\-|\*|\/|calcular|sumar|restar/i.test(taskText);
-
-        const fallbackAnalysis: PedagogicalAnalysis = {
-          detected_language: isEnglish ? 'en' : 'es',
-          additional_languages: [],
-          explanation_language: 'es-AR',
-          subject: isMath ? 'math' : isEnglish ? 'english' : 'language',
-          subject_label: isMath
-            ? 'Matemática'
-            : isEnglish
-            ? 'Inglés'
-            : 'Lengua y Literatura',
-          activity_type: isMath ? 'solve_operations' : 'understand_task',
-          activity_type_label: isMath
-            ? 'Cuentas y operaciones'
-            : 'Lectura y comprensión',
-          task_instruction: taskText.slice(0, 120),
-          simplified_instruction: isMath
-            ? 'Leé la consigna con atención y hacé las cuentas que te pide en tu hoja.'
-            : isEnglish
-            ? 'Tenés que leer las oraciones en inglés y completar lo que falta.'
-            : 'Leé el texto despacito y respondé lo que pide la tarea en tu cuaderno.',
-          steps: [
-            'Leé la primera parte de tu tarea con calma.',
-            'Buscá los datos más importantes o las palabras que ya conocés.',
-            'Escribí tu respuesta en el renglón correspondiente.',
-            'Revisá que no te haya quedado ningún punto sin responder.',
-          ],
-          difficult_terms: [
-            {
-              term: 'Consigna',
-              explanation: 'Lo que la maestra o el profesor te pide que hagas.',
-            },
-          ],
-          uncertainties: [],
-          needs_confirmation: false,
-        };
-        setAnalysis(fallbackAnalysis);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Error ${res.status} al analizar la tarea.`);
       }
 
+      const data: PedagogicalAnalysis = await res.json();
+      setAnalysis(data);
       setCurrentStep('adapted_guide');
-    }, 1200);
-  };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo analizar la tarea.';
+      setAnalyzeError(msg);
+      setCurrentStep('analyzing'); // queda en la pantalla de error
+    }
+  }, [taskText]);
 
-  // Cargar tarea de ejemplo escolar
+  // ─── Cargar tarea de ejemplo escolar ──────────────────────────────────────
   const handleSelectSample = (sample: SampleTask) => {
     setTaskText(sample.sampleText);
     setAnalysis(sample.analysis);
@@ -128,11 +113,10 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Encabezado accesible */}
       <Header currentStep={currentStep} onReset={handleReset} />
 
-      {/* Contenido principal según el paso actual */}
       <main className="flex-1 pb-16">
+
         {currentStep === 'welcome' && (
           <StepWelcome
             onStartCamera={handleStartCamera}
@@ -165,19 +149,52 @@ export default function HomePage() {
 
         {currentStep === 'analyzing' && (
           <div className="flex flex-col items-center justify-center py-20 px-4 text-center max-w-md mx-auto animate-in fade-in">
-            <div className="h-20 w-20 rounded-3xl bg-amber-400 text-amber-950 flex items-center justify-center mb-6 shadow-lg shadow-amber-300/50 animate-bounce">
-              <Sparkles className="h-10 w-10 stroke-[2.5]" />
-            </div>
-            <h3 className="text-2xl sm:text-3xl font-black text-amber-950 mb-3">
-              Entendiendo tu tarea...
-            </h3>
-            <p className="text-base font-semibold text-zinc-600 mb-6">
-              Estamos preparando una explicación clarita para vos. ¡Ya casi está!
-            </p>
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2 rounded-full">
-              <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-              <span>Analizando materia, idioma y pasos</span>
-            </div>
+            {analyzeError ? (
+              /* ── Estado de error: Gemini no respondió ── */
+              <div className="w-full space-y-5">
+                <div className="h-20 w-20 mx-auto rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mb-2 shadow-md">
+                  <AlertCircle className="h-10 w-10 stroke-[2]" />
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black text-rose-900">
+                  Algo salió mal
+                </h3>
+                <div className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-left">
+                  <p className="text-sm font-semibold text-rose-800">{analyzeError}</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    onClick={handleAnalyze}
+                    className="inline-flex items-center justify-center gap-2 py-3 px-6 rounded-2xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-base shadow-md transition-all"
+                  >
+                    <RotateCcw className="h-5 w-5" />
+                    Intentar de nuevo
+                  </button>
+                  <button
+                    onClick={() => setCurrentStep('ocr_review')}
+                    className="inline-flex items-center justify-center gap-2 py-3 px-6 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-700 font-bold text-base border-2 border-zinc-300 transition-colors"
+                  >
+                    Volver al texto
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Estado de carga: Gemini procesando ── */
+              <>
+                <div className="h-20 w-20 rounded-3xl bg-amber-400 text-amber-950 flex items-center justify-center mb-6 shadow-lg shadow-amber-300/50 animate-bounce">
+                  <Sparkles className="h-10 w-10 stroke-[2.5]" />
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black text-amber-950 mb-3">
+                  Entendiendo tu tarea...
+                </h3>
+                <p className="text-base font-semibold text-zinc-600 mb-6">
+                  Estamos preparando una explicación clarita para vos. ¡Ya casi está!
+                </p>
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2 rounded-full">
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                  <span>Analizando materia, idioma y pasos con inteligencia artificial</span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -198,9 +215,9 @@ export default function HomePage() {
             onListenAgain={() => setCurrentStep('adapted_guide')}
           />
         )}
+
       </main>
 
-      {/* Modal de ejemplos escolares para pruebas */}
       <SampleTasksModal
         isOpen={isSampleModalOpen}
         onClose={() => setIsSampleModalOpen(false)}

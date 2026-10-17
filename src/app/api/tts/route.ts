@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * Las credenciales residen exclusivamente en el servidor.
  */
 
+import { getServerEnv } from '@/lib/serverEnv';
+
 function escapeXml(unsafe: string): string {
   return unsafe
     .replace(/&/g, '&amp;')
@@ -16,8 +18,8 @@ function escapeXml(unsafe: string): string {
 }
 
 export async function GET() {
-  const speechKey = process.env.SPEECH_KEY || process.env.AZURE_SPEECH_KEY;
-  const speechRegion = process.env.SPEECH_REGION || process.env.AZURE_SPEECH_REGION;
+  const speechKey = getServerEnv('SPEECH_KEY') || getServerEnv('AZURE_SPEECH_KEY');
+  const speechRegion = getServerEnv('SPEECH_REGION') || getServerEnv('AZURE_SPEECH_REGION');
 
   return NextResponse.json({
     configured: Boolean(speechKey && speechRegion),
@@ -47,8 +49,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Extracción segura de credenciales en el servidor
-    const speechKey = process.env.SPEECH_KEY || process.env.AZURE_SPEECH_KEY;
-    const speechRegion = process.env.SPEECH_REGION || process.env.AZURE_SPEECH_REGION;
+    const speechKey = getServerEnv('SPEECH_KEY') || getServerEnv('AZURE_SPEECH_KEY');
+    const speechRegion = getServerEnv('SPEECH_REGION') || getServerEnv('AZURE_SPEECH_REGION');
 
     if (!speechKey || !speechRegion) {
       return NextResponse.json(
