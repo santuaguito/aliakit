@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fbf8f2;
+  --foreground: #2d2a26;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reducir o desactivar animaciones bruscas para evitar distracción cognitiva */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
