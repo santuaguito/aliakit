@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * Endpoint de Texto a Voz (TTS) para ALIAKIT
- * Utiliza Azure AI Speech con la voz neuronal argentina 'es-AR-ElenaNeural'.
+ * Utiliza Azure AI Speech con la voz neuronal multilingüe 'en-US-JennyMultilingualNeural'.
+ * Jenny Multilingual puede leer español e inglés en una sola síntesis sin cambiar de voz.
  * Las credenciales residen exclusivamente en el servidor.
  */
 
@@ -17,14 +18,30 @@ function escapeXml(unsafe: string): string {
     .replace(/'/g, '&apos;');
 }
 
+/**
+ * Detecta el idioma predominante del texto para el atributo xml:lang del SSML.
+ * Jenny Multilingual adaptará su pronunciación automáticamente para ambos idiomas.
+ */
+function detectLang(text: string): string {
+  const spanishMarkers =
+    /\b(el|la|los|las|un|una|que|de|en|y|es|son|con|para|por|del|al|se|su|no|sí|más|pero|como|este|esta|lo|le|yo|vos|te|mi|tu|qué|cómo|leé|respondé|escribí|revisá|buscá|hacé|primero|después)\b/gi;
+  const englishMarkers =
+    /\b(the|a|an|is|are|was|were|and|or|but|for|in|on|at|to|of|that|this|with|read|write|answer|complete|explain|find|identify|what|how|where|when|sentences|paragraph|text|questions)\b/gi;
+
+  const spanishCount = (text.match(spanishMarkers) || []).length;
+  const englishCount = (text.match(englishMarkers) || []).length;
+
+  return englishCount > spanishCount ? 'en-US' : 'es-AR';
+}
+
 export async function GET() {
   const speechKey = getServerEnv('SPEECH_KEY') || getServerEnv('AZURE_SPEECH_KEY');
   const speechRegion = getServerEnv('SPEECH_REGION') || getServerEnv('AZURE_SPEECH_REGION');
 
   return NextResponse.json({
     configured: Boolean(speechKey && speechRegion),
-    voice: 'es-AR-ElenaNeural',
-    language: 'es-AR',
+    voice: 'en-US-JennyMultilingualNeural',
+    languages: ['es-AR', 'en-US'],
   });
 }
 
@@ -69,9 +86,18 @@ export async function POST(req: NextRequest) {
 
     const escapedText = escapeXml(text.trim());
 
-    // Construcción del SSML oficial para Azure AI Speech
-    const ssml = `<speak version='1.0' xml:lang='es-AR'>
-  <voice xml:lang='es-AR' xml:gender='Female' name='es-AR-ElenaNeural'>
+    // Detectar idioma predominante para el atributo xml:lang raíz
+    const rootLang = detectLang(text);
+
+    /**
+     * SSML para Jenny Multilingual.
+     * - La voz en-US-JennyMultilingualNeural puede pronunciar español e inglés dentro de la
+     *   misma síntesis sin cambiar de voz ni fragmentar el audio.
+     * - Usamos xml:lang en el nodo <speak> con el idioma detectado como predominante.
+     * - Jenny adapta la pronunciación de cada palabra automáticamente (multilingüe nativo).
+     */
+    const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${rootLang}'>
+  <voice name='en-US-JennyMultilingualNeural'>
     <prosody rate='${rateString}'>
       ${escapedText}
     </prosody>
@@ -102,10 +128,16 @@ export async function POST(req: NextRequest) {
 
       if (response.status === 429) {
         return NextResponse.json(
-          { error: 'Límite de solicitudes del servicio de voz alcanzado. Intentá en unos segundos.' },
+          {
+            error:
+              'Límite de solicitudes del servicio de voz alcanzado. Intentá en unos segundos.',
+          },
           { status: 429 }
         );
       }
+
+      // Loguear solo el status code, nunca el body ni las credenciales
+      console.error('[TTS] Azure Speech error status:', response.status);
 
       return NextResponse.json(
         { error: 'No se pudo generar el audio con Azure Speech en este momento.' },

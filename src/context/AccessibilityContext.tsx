@@ -105,9 +105,7 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
             : settings.colorTheme === 'contrast'
             ? 'bg-[#18181B] text-[#FEF08A]'
             : 'bg-white text-zinc-900'
-        } ${
-          settings.dyslexicFont ? 'font-sans tracking-wide' : 'font-sans'
-        }`}
+        } aliakit-letter-${settings.letterSpacing} aliakit-line-${settings.lineSpacing}`}
       >
         {children}
         {settings.readingRuler && isClient && <ReadingRulerOverlay />}

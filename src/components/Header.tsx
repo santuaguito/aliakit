@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { useAccessibility } from '@/context/AccessibilityContext';
-import { StepId } from '@/types/aliakit';
-import { Sparkles, Eye, Type, Palette, RotateCcw } from 'lucide-react';
+import { StepId, SpacingSetting } from '@/types/aliakit';
+import { Sparkles, Eye, Type, Palette, RotateCcw, AlignJustify, CaseSensitive } from 'lucide-react';
 
 interface HeaderProps {
   currentStep: StepId;
@@ -19,11 +19,49 @@ const STEP_LABELS: Record<StepId, { number: number; label: string }> = {
   completed: { number: 5, label: '¡Listo!' },
 };
 
+/** Botón de tres opciones reutilizable para los controles de espaciado */
+function SpacingControl({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: SpacingSetting;
+  onChange: (v: SpacingSetting) => void;
+  options: { value: SpacingSetting; label: string }[];
+}) {
+  return (
+    <div>
+      <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider block mb-2">
+        {label}
+      </span>
+      <div className="flex gap-1.5">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`flex-1 py-1.5 rounded-xl text-xs font-bold border-2 transition-all ${
+              value === opt.value
+                ? 'border-amber-500 bg-amber-100 text-amber-950'
+                : 'border-zinc-200 text-zinc-600 hover:bg-zinc-100'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Header({ currentStep, onReset }: HeaderProps) {
   const {
     settings,
     setFontSize,
     setColorTheme,
+    setLineSpacing,
+    setLetterSpacing,
     toggleReadingRuler,
     resetSettings,
   } = useAccessibility();
@@ -121,7 +159,7 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
 
             {showAccessMenu && (
               <div
-                className="absolute right-0 mt-2 w-72 rounded-3xl bg-white p-4 shadow-xl border-2 border-amber-200 text-zinc-800 z-50 animate-in fade-in slide-in-from-top-2"
+                className="absolute right-0 mt-2 w-80 rounded-3xl bg-white p-4 shadow-xl border-2 border-amber-200 text-zinc-800 z-50 animate-in fade-in slide-in-from-top-2"
                 role="dialog"
                 aria-label="Ajustes de lectura accesibles"
               >
@@ -179,6 +217,56 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
                         Contraste
                       </button>
                     </div>
+                  </div>
+
+                  {/* ─── Espaciado entre letras ─── */}
+                  <div className="pt-2 border-t border-zinc-100">
+                    <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                      <CaseSensitive className="h-3.5 w-3.5 text-amber-600" />
+                      Espaciado entre letras
+                    </label>
+                    <SpacingControl
+                      label=""
+                      value={settings.letterSpacing}
+                      onChange={setLetterSpacing}
+                      options={[
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'relaxed', label: 'Amplio' },
+                        { value: 'loose', label: 'Muy amplio' },
+                      ]}
+                    />
+                    {/* Vista previa de la letra */}
+                    <p
+                      className="mt-2 text-xs text-zinc-500 bg-zinc-50 rounded-xl px-3 py-2 border border-zinc-200 truncate"
+                      style={{
+                        letterSpacing:
+                          settings.letterSpacing === 'loose'
+                            ? '0.09em'
+                            : settings.letterSpacing === 'relaxed'
+                            ? '0.04em'
+                            : 'normal',
+                      }}
+                    >
+                      Vista previa: la maestra pide que leás el texto.
+                    </p>
+                  </div>
+
+                  {/* ─── Espaciado entre líneas ─── */}
+                  <div className="pt-2 border-t border-zinc-100">
+                    <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                      <AlignJustify className="h-3.5 w-3.5 text-amber-600" />
+                      Espaciado entre líneas
+                    </label>
+                    <SpacingControl
+                      label=""
+                      value={settings.lineSpacing}
+                      onChange={setLineSpacing}
+                      options={[
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'relaxed', label: 'Amplio' },
+                        { value: 'loose', label: 'Muy amplio' },
+                      ]}
+                    />
                   </div>
 
                   {/* Regla de lectura visual */}

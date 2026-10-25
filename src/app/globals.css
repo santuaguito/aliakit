@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* ─── OpenDyslexic — tipografía diseñada para facilitar la lectura ─── */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/opendyslexic@0.91.12/fonts/OpenDyslexic-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/opendyslexic@0.91.12/fonts/OpenDyslexic-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --background: #fbf8f2;
   --foreground: #2d2a26;
@@ -8,10 +24,20 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* OpenDyslexic como fuente primaria global, con fallbacks legibles */
+  font-family: 'OpenDyslexic', 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Arial, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ─── Clases de espaciado aplicadas desde AccessibilityContext ─── */
+.aliakit-letter-normal  { letter-spacing: normal; }
+.aliakit-letter-relaxed { letter-spacing: 0.04em; }
+.aliakit-letter-loose   { letter-spacing: 0.09em; }
+
+.aliakit-line-normal    { line-height: 1.5; }
+.aliakit-line-relaxed   { line-height: 1.85; }
+.aliakit-line-loose     { line-height: 2.3; }
 
 /* Reducir o desactivar animaciones bruscas para evitar distracción cognitiva */
 @media (prefers-reduced-motion: reduce) {

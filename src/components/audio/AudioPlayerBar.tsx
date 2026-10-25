@@ -230,7 +230,7 @@ export default function AudioPlayerBar({
               {activeTab === 'original' ? 'Escuchar texto original' : title}
             </h4>
             <span className="text-xs font-bold text-amber-800 flex items-center gap-1">
-              <span>Voz de Elena (español rioplatense)</span>
+              <span>Voz multilingüe (español e inglés)</span>
             </span>
           </div>
         </div>
