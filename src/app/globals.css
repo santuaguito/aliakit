@@ -39,6 +39,12 @@ body {
 .aliakit-line-relaxed   { line-height: 1.85; }
 .aliakit-line-loose     { line-height: 2.3; }
 
+/* Aplica el interlineado directamente a los textos, pisando los text-* / leading-* de Tailwind */
+:is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
+  :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
+  line-height: var(--aliakit-lh);
+}
+
 /* Reducir o desactivar animaciones bruscas para evitar distracción cognitiva */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
