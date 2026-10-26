@@ -42,12 +42,17 @@ body {
 /* Aplica el interlineado directamente a los textos, pisando los text-* / leading-* de Tailwind */
 :is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
   :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
-  line-height: var(--aliakit-lh);
+  line-height: var(--aliakit-lh, 1.5) !important;
+  transition: line-height 0.3s ease, letter-spacing 0.3s ease;
 }
-
+:is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
+  :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
+  line-height: var(--aliakit-lh, 1.5) !important;
+  transition: line-height 0.3s ease, letter-spacing 0.3s ease;
+}
 /* Reducir o desactivar animaciones bruscas para evitar distracción cognitiva */
 @media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
+  *, ::before, ::after { 
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
