@@ -35,16 +35,13 @@ body {
 .aliakit-letter-relaxed { letter-spacing: 0.04em; }
 .aliakit-letter-loose   { letter-spacing: 0.09em; }
 
-.aliakit-line-normal    { line-height: 1.5; }
-.aliakit-line-relaxed   { line-height: 1.85; }
-.aliakit-line-loose     { line-height: 2.3; }
+.aliakit-line-normal  { --aliakit-lh: 1.5;  line-height: var(--aliakit-lh); }
+.aliakit-line-relaxed { --aliakit-lh: 1.85; line-height: var(--aliakit-lh); }
+.aliakit-line-loose   { --aliakit-lh: 2.3;  line-height: var(--aliakit-lh); }
 
 /* Aplica el interlineado directamente a los textos, pisando los text-* / leading-* de Tailwind */
-:is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
-  :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
-  line-height: var(--aliakit-lh, 1.5) !important;
-  transition: line-height 0.3s ease, letter-spacing 0.3s ease;
-}
+
+
 :is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
   :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
   line-height: var(--aliakit-lh, 1.5) !important;
