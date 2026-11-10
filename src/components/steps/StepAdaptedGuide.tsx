@@ -218,6 +218,12 @@ export default function StepAdaptedGuide({
                   : settings.letterSpacing === 'relaxed'
                   ? '0.03em'
                   : 'normal',
+              lineHeight:
+                settings.lineSpacing === 'loose'
+                  ? '2.3'
+                  : settings.lineSpacing === 'relaxed'
+                  ? '1.85'
+                  : '1.5',
             }}
           >
             {analysis.simplified_instruction}
@@ -227,7 +233,6 @@ export default function StepAdaptedGuide({
         {/* Reproductor de audio de la explicación */}
         <AudioPlayerBar
           textToRead={fullTextToRead}
-          originalText={originalText}
           title="Escuchar qué hay que hacer"
         />
       </div>
@@ -285,6 +290,14 @@ export default function StepAdaptedGuide({
                     className={`font-bold block ${bodySizeClass} ${
                       isCompleted ? 'line-through opacity-80 text-emerald-900' : ''
                     }`}
+                    style={{
+                      lineHeight:
+                        settings.lineSpacing === 'loose'
+                          ? '2.3'
+                          : settings.lineSpacing === 'relaxed'
+                          ? '1.85'
+                          : '1.5',
+                    }}
                   >
                     {step}
                   </span>

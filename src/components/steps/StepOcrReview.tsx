@@ -9,10 +9,14 @@ import {
   ArrowLeft,
   AlertCircle,
   Check,
+  Volume2,
+  BookOpen,
 } from 'lucide-react';
 import { useAccessibility } from '@/context/AccessibilityContext';
 
 interface StepOcrReviewProps {
+  mode: 'read' | 'explain' | null;
+  onModeChange: (mode: 'read' | 'explain') => void;
   imageSrc: string | null;
   recognizedText: string;
   isProcessingOcr: boolean;
@@ -24,6 +28,8 @@ interface StepOcrReviewProps {
 }
 
 export default function StepOcrReview({
+  mode,
+  onModeChange,
   imageSrc,
   recognizedText,
   isProcessingOcr,
@@ -148,6 +154,42 @@ export default function StepOcrReview({
                 </span>
               </div>
 
+              <fieldset className="min-w-0 space-y-2 py-1" aria-label="Elegí qué querés hacer con tu tarea">
+                <legend className="text-sm font-bold text-zinc-700">¿Cómo querés seguir?</legend>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Modalidad de ayuda">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === 'read'}
+                    onClick={() => onModeChange('read')}
+                    className={`h-full rounded-2xl border-2 p-4 text-left transition-colors focus:outline-none focus:ring-4 focus:ring-sky-300 ${mode === 'read' ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-200' : 'border-zinc-200 bg-white hover:border-sky-300'}`}
+                  >
+                    <span className="flex items-center gap-2 font-black text-sky-950">
+                      <Volume2 className="h-5 w-5 shrink-0 text-sky-700" />
+                      Leer en voz alta
+                    </span>
+                    <span className="mt-1 block text-sm font-medium text-zinc-700">
+                      Quiero escuchar la consigna original tal como aparece en la foto.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === 'explain'}
+                    onClick={() => onModeChange('explain')}
+                    className={`h-full rounded-2xl border-2 p-4 text-left transition-colors focus:outline-none focus:ring-4 focus:ring-amber-300 ${mode === 'explain' ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-zinc-200 bg-white hover:border-amber-300'}`}
+                  >
+                    <span className="flex items-center gap-2 font-black text-amber-950">
+                      <BookOpen className="h-5 w-5 shrink-0 text-amber-700" />
+                      Explicarme paso a paso
+                    </span>
+                    <span className="mt-1 block text-sm font-medium text-zinc-700">
+                      Quiero que me expliquen qué tengo que hacer de forma sencilla.
+                    </span>
+                  </button>
+                </div>
+              </fieldset>
+
               <textarea
                 id="task-text-editor"
                 rows={8}
@@ -162,6 +204,12 @@ export default function StepOcrReview({
                       : settings.letterSpacing === 'relaxed'
                       ? '0.04em'
                       : 'normal',
+                  lineHeight:
+                    settings.lineSpacing === 'loose'
+                      ? '2.3'
+                      : settings.lineSpacing === 'relaxed'
+                      ? '1.85'
+                      : '1.5',
                 }}
               />
 
@@ -196,15 +244,15 @@ export default function StepOcrReview({
 
             <button
               onClick={onAnalyze}
-              disabled={!recognizedText.trim()}
+              disabled={!recognizedText.trim() || !mode}
               className={`w-full sm:w-auto inline-flex items-center justify-center gap-3 py-4 px-8 rounded-2xl font-black text-lg sm:text-xl shadow-lg border-2 transition-all ${
-                recognizedText.trim()
+                recognizedText.trim() && mode
                   ? 'bg-amber-400 hover:bg-amber-300 active:scale-95 text-amber-950 border-amber-400 shadow-amber-300/40 cursor-pointer'
                   : 'bg-zinc-200 text-zinc-400 border-zinc-200 cursor-not-allowed shadow-none'
               }`}
             >
-              <Sparkles className="h-6 w-6 stroke-[2.5]" />
-              <span>Explicar mi tarea paso a paso</span>
+              {mode === 'read' ? <Volume2 className="h-6 w-6" /> : <Sparkles className="h-6 w-6 stroke-[2.5]" />}
+              <span>{mode === 'read' ? 'Leer mi tarea en voz alta' : 'Explicar mi tarea paso a paso'}</span>
               <ArrowRight className="h-6 w-6 stroke-[2.5]" />
             </button>
           </div>

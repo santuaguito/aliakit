@@ -38,11 +38,11 @@ export default function StepCompleted({
 
       {/* Felicitación */}
       <h2 className={`font-black text-amber-950 tracking-tight mb-3 ${titleSizeClass}`}>
-        ¡Muy bien! ¡Terminaste tu tarea!
+        ¡Muy bien! ¡Lo hiciste!
       </h2>
 
       <p className="text-zinc-700 font-medium text-lg sm:text-xl max-w-md mb-8">
-        Hiciste cada paso con paciencia y por tu cuenta. ¡Excelente esfuerzo!
+        Revisaste tu tarea y la entendiste. ¡Excelente esfuerzo!
       </p>
 
       {/* Opciones de Cierre */}

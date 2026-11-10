@@ -105,7 +105,15 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
             : settings.colorTheme === 'contrast'
             ? 'bg-[#18181B] text-[#FEF08A]'
             : 'bg-white text-zinc-900'
-        } aliakit-letter-${settings.letterSpacing} aliakit-line-${settings.lineSpacing}`}
+          } aliakit-letter-${settings.letterSpacing} aliakit-line-${settings.lineSpacing} ${settings.dyslexicFont ? 'aliakit-dyslexic' : ''}`}
+        style={{
+          '--aliakit-lh':
+            settings.lineSpacing === 'loose' ? '2.3' :
+            settings.lineSpacing === 'relaxed' ? '1.85' : '1.5',
+          '--aliakit-ls':
+            settings.letterSpacing === 'loose' ? '0.09em' :
+            settings.letterSpacing === 'relaxed' ? '0.04em' : 'normal',
+        } as React.CSSProperties}
       >
         {children}
         {settings.readingRuler && isClient && <ReadingRulerOverlay />}

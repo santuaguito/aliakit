@@ -24,28 +24,60 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  /* OpenDyslexic como fuente primaria global, con fallbacks legibles */
-  font-family: 'OpenDyslexic', 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Arial, sans-serif;
+  font-family: Arial, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
+.aliakit-root.aliakit-dyslexic,
+.aliakit-root.aliakit-dyslexic :is(*, button, input, textarea, select) {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Arial, sans-serif !important;
+}
+
 /* ─── Clases de espaciado aplicadas desde AccessibilityContext ─── */
+/* Las variables --aliakit-lh y --aliakit-ls se inyectan como style inline desde AccessibilityContext */
 .aliakit-letter-normal  { letter-spacing: normal; }
 .aliakit-letter-relaxed { letter-spacing: 0.04em; }
 .aliakit-letter-loose   { letter-spacing: 0.09em; }
 
-.aliakit-line-normal  { --aliakit-lh: 1.5;  line-height: var(--aliakit-lh); }
-.aliakit-line-relaxed { --aliakit-lh: 1.85; line-height: var(--aliakit-lh); }
-.aliakit-line-loose   { --aliakit-lh: 2.3;  line-height: var(--aliakit-lh); }
+.aliakit-line-normal  { --aliakit-lh: 1.5; }
+.aliakit-line-relaxed { --aliakit-lh: 1.85; }
+.aliakit-line-loose   { --aliakit-lh: 2.3; }
 
-/* Aplica el interlineado directamente a los textos, pisando los text-* / leading-* de Tailwind */
-
-
-:is(.aliakit-line-normal, .aliakit-line-relaxed, .aliakit-line-loose)
-  :is(p, li, h1, h2, h3, h4, h5, h6, label, blockquote, textarea, .aliakit-text) {
+/* Aplica el interlineado y espaciado directamente a los textos, pisando los leading-* de Tailwind */
+.aliakit-root p,
+.aliakit-root li,
+.aliakit-root h1,
+.aliakit-root h2,
+.aliakit-root h3,
+.aliakit-root h4,
+.aliakit-root h5,
+.aliakit-root h6,
+.aliakit-root label,
+.aliakit-root blockquote,
+.aliakit-root textarea,
+.aliakit-root input,
+.aliakit-root select,
+.aliakit-root span.aliakit-text,
+.aliakit-root .aliakit-text {
   line-height: var(--aliakit-lh, 1.5) !important;
-  transition: line-height 0.3s ease, letter-spacing 0.3s ease;
+  letter-spacing: var(--aliakit-ls, normal);
+  transition: line-height 0.2s ease, letter-spacing 0.2s ease;
+}
+
+.aliakit-root {
+  overflow-x: clip;
+}
+
+.aliakit-root :is(p, li, h1, h2, h3, h4, h5, h6, label, textarea, input, select, .aliakit-text) {
+  overflow-wrap: anywhere;
+}
+
+/* No aplicar a elementos de UI compactos */
+.aliakit-root button,
+.aliakit-root [role="switch"],
+.aliakit-root [role="tab"] {
+  line-height: normal;
 }
 /* Reducir o desactivar animaciones bruscas para evitar distracción cognitiva */
 @media (prefers-reduced-motion: reduce) {

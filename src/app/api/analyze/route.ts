@@ -24,8 +24,15 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const GEMINI_TIMEOUT_MS = 50_000;
+
+// Configuración de seguridad: desactiva bloqueos falsos positivos en consignas y tareas escolares.
+const SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+];
 
 // Vercel limita el body de una función a ~4.5 MB: el cliente debe reducir la foto antes de enviarla.
 const MAX_IMAGE_BASE64_CHARS = 4_200_000;
@@ -47,6 +54,7 @@ type ErrorType =
   | 'config'
   | 'auth'
   | 'rate_limit'
+  | 'timeout'
   | 'connection'
   | 'upstream'
   | 'blocked'
@@ -422,6 +430,7 @@ function validateAnalysis(raw: unknown, mode: Mode, correctedText: string): Visi
   }
 
   const base = {
+    image_quality: imageQuality,
     detected_language: str(raw.detected_language, 20) || 'es',
     additional_languages: strArray(raw.additional_languages, 5, 20),
     explanation_language: 'es-AR',
@@ -517,39 +526,68 @@ export async function POST(req: NextRequest) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-    let geminiRes: Response;
+    let geminiRes: Response | null = null;
+    let fetchError: unknown = null;
+
+    const candidateModels = Array.from(new Set([GEMINI_MODEL, 'gemini-2.0-flash', 'gemini-1.5-flash']));
+
     try {
-      geminiRes = await fetch(GEMINI_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': geminiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-            temperature: 0.1,
-            maxOutputTokens: 8192,
+      for (const model of candidateModels) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiKey,
           },
-        }),
-        signal: controller.signal,
-      });
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ role: 'user', parts }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: RESPONSE_SCHEMA,
+              temperature: 0.1,
+              maxOutputTokens: 8192,
+            },
+            safetySettings: SAFETY_SETTINGS,
+          }),
+          signal: controller.signal,
+        });
+
+        if (res.status === 404) {
+          console.warn(`[analyze] Modelo ${model} no disponible (404), intentando con modelo alternativo...`);
+          continue;
+        }
+
+        geminiRes = res;
+        break;
+      }
     } catch (err) {
-      const aborted = err instanceof Error && err.name === 'AbortError';
+      fetchError = err;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (fetchError) {
+      const aborted = fetchError instanceof Error && fetchError.name === 'AbortError';
       console.error('[analyze] Fallo de conexión con Gemini:', aborted ? 'timeout' : 'red');
       return jsonError(
         aborted ? 504 : 503,
-        'connection',
+        aborted ? 'timeout' : 'connection',
         aborted
           ? 'El análisis tardó demasiado. Reintentá en unos segundos. No es un problema de tu foto.'
           : 'No pudimos conectar con el servicio de análisis. Revisá tu conexión y reintentá. No es un problema de tu foto.',
         true
       );
-    } finally {
-      clearTimeout(timeout);
+    }
+
+    if (!geminiRes) {
+      return jsonError(
+        502,
+        'config',
+        'El modelo de análisis no está disponible en el servidor. No es un problema de tu foto.',
+        false
+      );
     }
 
     if (!geminiRes.ok) {
@@ -560,11 +598,18 @@ export async function POST(req: NextRequest) {
     const payload = readGeminiPayload(data);
 
     if (payload.blocked) {
+      const feedback = isRecord(data) ? (data.promptFeedback as Record<string, unknown> | undefined) : undefined;
+      const candidates = isRecord(data) && Array.isArray(data.candidates) ? data.candidates : [];
+      const firstCand = isRecord(candidates[0]) ? (candidates[0] as Record<string, unknown>) : undefined;
+      console.warn('[analyze] Gemini bloqueó el análisis de la imagen:', {
+        blockReason: feedback?.blockReason,
+        finishReason: firstCand?.finishReason,
+      });
       return jsonError(
         422,
         'blocked',
-        'El servicio de análisis no pudo procesar esta imagen. Probá con otra foto de la tarea.',
-        false
+        'El servicio de análisis no pudo procesar esta imagen. Podés intentar de nuevo con buena luz o corregir el texto a mano.',
+        true
       );
     }
 

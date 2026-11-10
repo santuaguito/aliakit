@@ -44,8 +44,7 @@ export default function StepWelcome({
       <p
         className={`text-zinc-700 max-w-xl mb-10 font-medium ${bodySizeClass}`}
       >
-        Sacale una foto a tu hoja del cuaderno o libro. Te la explicamos con
-        palabras simples y paso a paso para que puedas resolverla vos solo.
+        Sacale una foto a tu hoja del cuaderno o libro. Podés escuchar la consigna en voz alta o recibir una explicación sencilla, paso a paso, para resolverla por tu cuenta.
       </p>
 
       {/* Opciones de Acción Principales (Botones Grandes y Táctiles) */}

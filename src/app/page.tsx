@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { StepId, PedagogicalAnalysis } from '@/types/aliakit';
 import { SampleTask } from '@/data/samples';
 import Header from '@/components/Header';
@@ -9,6 +9,7 @@ import StepCapture from '@/components/steps/StepCapture';
 import StepOcrReview from '@/components/steps/StepOcrReview';
 import StepAdaptedGuide from '@/components/steps/StepAdaptedGuide';
 import StepCompleted from '@/components/steps/StepCompleted';
+import AudioPlayerBar from '@/components/audio/AudioPlayerBar';
 import SampleTasksModal from '@/components/SampleTasksModal';
 import { Sparkles, Loader2, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const MAX_DATA_URL_CHARS = 3_800_000;
 // Idéntico al de route.ts. Conviene moverlo a '@/types/aliakit' e importarlo en ambos lados.
 type VisionAnalysis = PedagogicalAnalysis & {
   status: 'ok' | 'needs_review';
+  image_quality: 'clear' | 'partial' | 'unreadable';
   recognized_text: string;
   confidence: 'high' | 'medium' | 'low';
   uncertain_fragments: { fragment: string; reason: string }[];
@@ -160,7 +162,9 @@ async function requestAnalysis(payload: Record<string, unknown>): Promise<Vision
 function errorTitle(type: string): string {
   switch (type) {
     case 'rate_limit':
-      return 'El servicio está muy ocupado';
+      return 'Se agotó la cuota por ahora';
+    case 'timeout':
+      return 'El análisis está tardando demasiado';
     case 'connection':
       return 'Problema de conexión';
     case 'blocked':
@@ -212,9 +216,9 @@ function ReviewBanner({
           <div className="flex items-start gap-3">
             <AlertCircle className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-base font-bold text-amber-950">
-              No pudimos leer con seguridad una parte de la consigna. Para ayudarte sin cambiar lo que pide la
-              tarea, sacá otra foto con buena luz y enfocá toda la hoja. También podés corregir el texto
-              manualmente.
+              {result.image_quality === 'unreadable'
+                ? 'No pudimos leer lo esencial de la foto. Sacá otra con buena luz y enfocá toda la hoja, o escribí la consigna manualmente.'
+                : 'No pudimos leer con seguridad una parte de la consigna. Para ayudarte sin cambiar lo que pide la tarea, sacá otra foto con buena luz y enfocá toda la hoja. También podés corregir el texto manualmente.'}
             </p>
           </div>
 
@@ -285,13 +289,33 @@ export default function HomePage() {
   const [visionResult, setVisionResult] = useState<VisionAnalysis | null>(null);
   const [analysisSource, setAnalysisSource] = useState<AnalysisSource | null>(null);
   const [analyzedText, setAnalyzedText] = useState<string>('');
+  const [selectedMode, setSelectedMode] = useState<'read' | 'explain' | null>(null);
+  const [textConfirmed, setTextConfirmed] = useState(false);
   const [reviewHint, setReviewHint] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<AnalyzeErrorState | null>(null);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [longWait, setLongWait] = useState(false);
   const [isSampleModalOpen, setIsSampleModalOpen] = useState<boolean>(false);
 
   // Evita que una respuesta tardía pise el estado si el usuario ya volvió atrás o reinició.
   const requestIdRef = useRef(0);
   const lastOperationRef = useRef<AnalysisSource>('image');
+  const progressStartedAtRef = useRef(0);
+
+  useEffect(() => {
+    if (currentStep !== 'analyzing' || analyzeError) return;
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - progressStartedAtRef.current;
+      setLongWait(elapsed >= 25_000);
+      setProgress((value) => {
+        if (value >= 94) return value;
+        const increment = value < 65 ? 2.2 : value < 84 ? 0.85 : 0.22;
+        return Math.min(94, value + increment);
+      });
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [currentStep, analyzeError]);
 
   // ─── Reset ────────────────────────────────────────────────────────────────
   const handleReset = () => {
@@ -304,8 +328,13 @@ export default function HomePage() {
     setVisionResult(null);
     setAnalysisSource(null);
     setAnalyzedText('');
+    setSelectedMode(null);
+    setTextConfirmed(false);
     setReviewHint(null);
     setAnalyzeError(null);
+    setIsOcrProcessing(false);
+    setProgress(0);
+    setLongWait(false);
   };
 
   // ─── Paso 1 → 2: Iniciar captura ─────────────────────────────────────────
@@ -317,6 +346,7 @@ export default function HomePage() {
     const recognized = (result.recognized_text || '').trim();
 
     setVisionResult(result);
+    setProgress(100);
     setAnalysisSource(source);
     setAnalyzedText(recognized);
     setTaskText(recognized);
@@ -342,6 +372,7 @@ export default function HomePage() {
         retryable: true,
       });
     }
+    setLongWait(false);
     setCurrentStep('analyzing'); // queda en la pantalla de error
   }, []);
 
@@ -352,6 +383,9 @@ export default function HomePage() {
       lastOperationRef.current = 'image';
 
       setAnalyzeError(null);
+      setProgress(2);
+      setLongWait(false);
+      progressStartedAtRef.current = Date.now();
       setReviewHint(null);
       setVisionResult(null);
       setAnalysis(null);
@@ -394,6 +428,9 @@ export default function HomePage() {
       lastOperationRef.current = 'text';
 
       setAnalyzeError(null);
+      setProgress(2);
+      setLongWait(false);
+      progressStartedAtRef.current = Date.now();
       setReviewHint(null);
       setCurrentStep('analyzing');
 
@@ -416,6 +453,8 @@ export default function HomePage() {
       setTaskText('');
       setOcrText('');
       setAnalyzedText('');
+      setSelectedMode(null);
+      setTextConfirmed(false);
       void runImageAnalysis(base64);
     },
     [runImageAnalysis]
@@ -429,6 +468,11 @@ export default function HomePage() {
     const current = taskText.trim();
     setReviewHint(null);
 
+    if (!selectedMode) {
+      setReviewHint('Elegí si querés escuchar la consigna o recibir una explicación para continuar.');
+      return;
+    }
+
     if (current.length < 3) {
       setReviewHint('Escribí o corregí el texto de la tarea antes de continuar.');
       return;
@@ -440,15 +484,19 @@ export default function HomePage() {
       return;
     }
     // Texto sin cambios y análisis completo: se muestra la guía ya generada.
-    if (analysis && current === analyzedText) {
+    if (analysis && current === analyzedText && selectedMode === 'explain') {
       setCurrentStep('adapted_guide');
       return;
     }
     // Texto sin cambios pero con partes sin confirmar: no se avanza sin una decisión del usuario.
-    if (visionResult?.status === 'needs_review' && current === analyzedText) {
+    if (visionResult?.status === 'needs_review' && current === analyzedText && !textConfirmed) {
       setReviewHint(
         'Todavía hay partes sin confirmar. Corregí el texto, o si ya está bien, tocá «El texto está bien, continuar». También podés sacar otra foto con buena luz.'
       );
+      return;
+    }
+    if (selectedMode === 'read') {
+      setCurrentStep('read_task');
       return;
     }
     void analyzeText(current);
@@ -465,11 +513,35 @@ export default function HomePage() {
     }
   };
 
-  const handleManualFix = () => {
+  const handleManualFix = async () => {
     setAnalyzeError(null);
-    setTaskText((prev) => prev || ocrText);
-    setReviewHint('Podés revisar o escribir el texto de abajo y continuar.');
     setCurrentStep('ocr_review');
+    const existing = taskText.trim() || ocrText.trim();
+    if (existing) {
+      setTaskText(existing);
+      setReviewHint('Podés revisar o escribir el texto de abajo y continuar.');
+      return;
+    }
+    if (imageSrc) {
+      setIsOcrProcessing(true);
+      setReviewHint('Leyendo el texto de tu foto para que no tengas que escribirlo a mano...');
+      try {
+        const text = await runAuxOcr(imageSrc);
+        if (text) {
+          setTaskText(text);
+          setOcrText(text);
+          setReviewHint('Revisá el texto reconocido de la foto y corregí si hace falta.');
+        } else {
+          setReviewHint('No pudimos extraer el texto de la foto automáticamente. Podés escribirlo acá.');
+        }
+      } catch {
+        setReviewHint('Podés escribir el texto de la tarea acá y continuar.');
+      } finally {
+        setIsOcrProcessing(false);
+      }
+    } else {
+      setReviewHint('Podés escribir el texto de la tarea acá y continuar.');
+    }
   };
 
   const handleReAnalyze = () => {
@@ -484,6 +556,9 @@ export default function HomePage() {
   // ─── Cargar tarea de ejemplo escolar ──────────────────────────────────────
   const handleSelectSample = (sample: SampleTask) => {
     requestIdRef.current += 1;
+    setAnalyzeError(null);
+    setProgress(0);
+    setLongWait(false);
     setTaskText(sample.sampleText);
     setAnalyzedText(sample.sampleText.trim());
     setAnalysis(sample.analysis);
@@ -532,19 +607,43 @@ export default function HomePage() {
               canRetryPhoto={Boolean(imageSrc)}
               onRetakePhoto={() => setCurrentStep('capture')}
               onRetryPhoto={() => imageSrc && void runImageAnalysis(imageSrc)}
-              onConfirmText={() => void analyzeText(taskText.trim())}
+              onConfirmText={() => {
+                setTextConfirmed(true);
+                setReviewHint('Texto confirmado. Elegí si querés escucharlo o recibir una explicación para continuar.');
+              }}
             />
             <StepOcrReview
               imageSrc={imageSrc}
+              mode={selectedMode}
+              onModeChange={setSelectedMode}
               recognizedText={taskText}
-              isProcessingOcr={false}
-              ocrProgress={100}
+              isProcessingOcr={isOcrProcessing}
+              ocrProgress={isOcrProcessing ? 50 : 100}
               onTextChange={setTaskText}
               onAnalyze={handleAnalyze}
               onRetake={() => setCurrentStep('capture')}
               onBack={() => setCurrentStep('capture')}
             />
           </>
+        )}
+
+        {currentStep === 'read_task' && (
+          <section className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 sm:py-14" aria-labelledby="read-task-title">
+            <button
+              onClick={() => setCurrentStep('ocr_review')}
+              className="self-start rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 hover:bg-amber-100 focus:outline-none focus:ring-4 focus:ring-amber-300"
+            >
+              ← Volver a corregir el texto
+            </button>
+            <div className="text-center">
+              <h2 id="read-task-title" className="mb-3 text-2xl font-black text-amber-950 sm:text-3xl">Tu consigna</h2>
+              <p className="text-zinc-700">Este es el texto reconocido y corregido. Podés escucharlo en voz alta.</p>
+            </div>
+            <div className="whitespace-pre-wrap break-words rounded-3xl border-2 border-sky-200 bg-white p-5 text-zinc-900 shadow-sm sm:p-7">
+              {taskText}
+            </div>
+            <AudioPlayerBar textToRead={taskText} title="Leer mi tarea en voz alta" />
+          </section>
         )}
 
         {currentStep === 'analyzing' && (
@@ -592,14 +691,37 @@ export default function HomePage() {
                   <Sparkles className="h-10 w-10 stroke-[2.5]" />
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-black text-amber-950 mb-3">
-                  Entendiendo tu tarea...
+                  Estamos preparando tu actividad
                 </h3>
-                <p className="text-base font-semibold text-zinc-600 mb-6">
-                  Estamos preparando una explicación clarita para vos. ¡Ya casi está!
-                </p>
+                <div className="w-full max-w-md space-y-3 mb-5" role="status" aria-live="polite">
+                  <div className="flex items-center justify-between gap-3 text-sm font-bold text-amber-950">
+                    <span className="min-w-0 text-left">
+                      {progress < 15 ? 'Preparando la imagen' : progress < 45 ? 'Analizando la fotografía' : progress < 80 ? 'Interpretando la consigna' : 'Esperando el resultado del análisis'}
+                    </span>
+                    <span className="tabular-nums shrink-0">{Math.round(progress)}%</span>
+                  </div>
+                  <div
+                    className="h-4 w-full overflow-hidden rounded-full border border-amber-300 bg-amber-100 shadow-inner"
+                    role="progressbar"
+                    aria-label="Progreso del análisis"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progress)}
+                  >
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                      style={{ width: `${Math.round(progress)}%` }}
+                    />
+                  </div>
+                  <p className="text-sm font-semibold text-zinc-600">
+                    {longWait
+                      ? 'El análisis continúa y puede demorar un poco más. No hace falta volver a cargar la foto.'
+                      : 'Estamos leyendo la hoja con cuidado para preparar una explicación clara.'}
+                  </p>
+                </div>
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-100 px-4 py-2 rounded-full">
                   <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-                  <span>Leyendo tu hoja y analizando materia, idioma y pasos con inteligencia artificial</span>
+                  <span>El análisis puede tardar unos segundos</span>
                 </div>
               </>
             )}

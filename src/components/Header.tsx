@@ -14,6 +14,7 @@ const STEP_LABELS: Record<StepId, { number: number; label: string }> = {
   welcome: { number: 1, label: 'Inicio' },
   capture: { number: 2, label: 'Elegir foto' },
   ocr_review: { number: 3, label: 'Revisar texto' },
+  read_task: { number: 4, label: 'Leer mi tarea' },
   analyzing: { number: 4, label: 'Entendiendo...' },
   adapted_guide: { number: 4, label: 'Tu tarea explicada' },
   completed: { number: 5, label: '¡Listo!' },
@@ -62,6 +63,7 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
     setColorTheme,
     setLineSpacing,
     setLetterSpacing,
+    toggleDyslexicFont,
     toggleReadingRuler,
     resetSettings,
   } = useAccessibility();
@@ -71,20 +73,20 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
   const stepInfo = STEP_LABELS[currentStep] || { number: 1, label: 'Inicio' };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-amber-200/60 bg-amber-50/90 backdrop-blur-md px-4 py-3 sm:px-6 shadow-sm transition-colors">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 border-b border-amber-200/60 bg-amber-50/90 backdrop-blur-md px-3 py-3 sm:px-6 shadow-sm transition-colors">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-1.5 sm:gap-3">
         {/* Logo e Identidad */}
         <button
           onClick={onReset}
           className="group flex items-center gap-2.5 text-left focus:outline-none focus:ring-4 focus:ring-amber-300 rounded-2xl p-1"
           title="Ir al inicio de ALIAKIT"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-md shadow-amber-300/50 group-hover:scale-105 transition-transform">
+          <div className="flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-md shadow-amber-300/50 group-hover:scale-105 transition-transform">
             <Sparkles className="h-6 w-6 stroke-[2.5]" />
           </div>
           <div>
             <span className="block text-2xl font-black tracking-tight text-amber-950">
-              ALIAKIT
+              <span className="text-xl sm:text-2xl">ALIAKIT</span>
             </span>
             <span className="hidden sm:block text-xs font-medium text-amber-800/80 -mt-1">
               Tu compañero de tareas
@@ -105,7 +107,7 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
         {/* Barra de accesibilidad directa */}
         <div className="flex items-center gap-2">
           {/* Botón rápido tamaño de letra */}
-          <div className="flex items-center rounded-2xl bg-white/90 p-1 border border-amber-200/80 shadow-xs">
+          <div className="flex items-center rounded-2xl bg-white/90 p-0.5 sm:p-1 border border-amber-200/80 shadow-xs">
             <button
               onClick={() => setFontSize('normal')}
               aria-label="Tamaño de letra normal"
@@ -159,7 +161,7 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
 
             {showAccessMenu && (
               <div
-                className="absolute right-0 mt-2 w-80 rounded-3xl bg-white p-4 shadow-xl border-2 border-amber-200 text-zinc-800 z-50 animate-in fade-in slide-in-from-top-2"
+                className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-3xl bg-white p-4 shadow-xl border-2 border-amber-200 text-zinc-800 z-50 animate-in fade-in slide-in-from-top-2"
                 role="dialog"
                 aria-label="Ajustes de lectura accesibles"
               >
@@ -179,6 +181,21 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
                 </div>
 
                 <div className="space-y-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-sm font-bold text-zinc-800 block">OpenDyslexic</span>
+                      <span className="text-xs text-zinc-500">Usar esta tipografía en toda la aplicación</span>
+                    </div>
+                    <button
+                      onClick={toggleDyslexicFont}
+                      role="switch"
+                      aria-checked={settings.dyslexicFont}
+                      aria-label="Usar tipografía OpenDyslexic"
+                      className={`h-7 w-12 shrink-0 rounded-full transition-colors p-1 flex items-center ${settings.dyslexicFont ? 'bg-amber-500 justify-end' : 'bg-zinc-300 justify-start'}`}
+                    >
+                      <span className="h-5 w-5 rounded-full bg-white shadow-md" />
+                    </button>
+                  </div>
                   {/* Color de fondo */}
                   <div>
                     <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider block mb-2 flex items-center gap-1.5">

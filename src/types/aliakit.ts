@@ -7,6 +7,7 @@ export type StepId =
   | 'welcome'        // Paso 1: Bienvenida y llamada a la acción
   | 'capture'        // Paso 2: Cámara o subida de imagen
   | 'ocr_review'    // Paso 3: Revisión y corrección del texto extraído
+  | 'read_task'     // Lectura en voz alta de la consigna reconocida
   | 'analyzing'      // Paso 4: Estado de carga / análisis pedagógico
   | 'adapted_guide'  // Paso 5 & 6: Explicación adaptada, pasos y vocabulario
   | 'completed';     // Paso 8: Felicitación y opciones de cierre
