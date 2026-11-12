@@ -11,6 +11,7 @@ import StepAdaptedGuide from '@/components/steps/StepAdaptedGuide';
 import StepCompleted from '@/components/steps/StepCompleted';
 import AudioPlayerBar from '@/components/audio/AudioPlayerBar';
 import SampleTasksModal from '@/components/SampleTasksModal';
+import DyslexiaGameModule from '@/components/games/DyslexiaGameModule';
 import { Sparkles, Loader2, AlertCircle, RotateCcw, Camera, Check } from 'lucide-react';
 
 /* ─────────────────────────── Configuración ─────────────────────────── */
@@ -297,6 +298,7 @@ export default function HomePage() {
   const [progress, setProgress] = useState(0);
   const [longWait, setLongWait] = useState(false);
   const [isSampleModalOpen, setIsSampleModalOpen] = useState<boolean>(false);
+  const [showGames, setShowGames] = useState(false);
 
   // Evita que una respuesta tardía pise el estado si el usuario ya volvió atrás o reinició.
   const requestIdRef = useRef(0);
@@ -576,9 +578,11 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header currentStep={currentStep} onReset={handleReset} />
+      <Header currentStep={currentStep} onReset={handleReset} onOpenGames={() => setShowGames(true)} />
 
       <main className="flex-1 pb-16">
+
+        {showGames ? <DyslexiaGameModule onExit={() => setShowGames(false)} /> : <>
 
         {currentStep === 'welcome' && (
           <StepWelcome
@@ -745,6 +749,8 @@ export default function HomePage() {
             onListenAgain={() => setCurrentStep('adapted_guide')}
           />
         )}
+
+        </>}
 
       </main>
 

@@ -4,10 +4,12 @@ import React, { useState } from 'react';
 import { useAccessibility } from '@/context/AccessibilityContext';
 import { StepId, SpacingSetting } from '@/types/aliakit';
 import { Sparkles, Eye, Type, Palette, RotateCcw, AlignJustify, CaseSensitive } from 'lucide-react';
+import { Gamepad2 } from 'lucide-react';
 
 interface HeaderProps {
   currentStep: StepId;
   onReset?: () => void;
+  onOpenGames?: () => void;
 }
 
 const STEP_LABELS: Record<StepId, { number: number; label: string }> = {
@@ -56,7 +58,7 @@ function SpacingControl({
   );
 }
 
-export default function Header({ currentStep, onReset }: HeaderProps) {
+export default function Header({ currentStep, onReset, onOpenGames }: HeaderProps) {
   const {
     settings,
     setFontSize,
@@ -106,6 +108,7 @@ export default function Header({ currentStep, onReset }: HeaderProps) {
 
         {/* Barra de accesibilidad directa */}
         <div className="flex items-center gap-2">
+          {onOpenGames && <button onClick={onOpenGames} className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl border border-amber-200 bg-white/90 px-3 text-sm font-bold text-amber-950 hover:bg-amber-100" aria-label="Abrir minijuegos"><Gamepad2 className="h-5 w-5"/><span className="hidden sm:inline">Jugar</span></button>}
           {/* Botón rápido tamaño de letra */}
           <div className="flex items-center rounded-2xl bg-white/90 p-0.5 sm:p-1 border border-amber-200/80 shadow-xs">
             <button
