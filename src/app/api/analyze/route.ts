@@ -25,6 +25,8 @@ export const maxDuration = 60;
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_TIMEOUT_MS = 50_000;
+const TRANSIENT_RETRY_DELAYS_MS = [1_000, 2_000] as const;
+const RECITATION_RETRY_INSTRUCTION = "Parafraseá y resumí en tus palabras; en 'recognized_text' transcribí solo lo necesario para entender la consigna, sin reproducir párrafos largos completos.";
 
 // Configuración de seguridad: desactiva bloqueos falsos positivos en consignas y tareas escolares.
 const SAFETY_SETTINGS = [
@@ -300,8 +302,8 @@ function parseImageInput(
   return { data, mimeType: mime };
 }
 
-function readGeminiPayload(data: unknown): { text: string; blocked: boolean; truncated: boolean } {
-  if (!isRecord(data)) return { text: '', blocked: false, truncated: false };
+function readGeminiPayload(data: unknown): { text: string; blocked: boolean; truncated: boolean; finishReason: string } {
+  if (!isRecord(data)) return { text: '', blocked: false, truncated: false, finishReason: '' };
 
   const feedback = isRecord(data.promptFeedback) ? data.promptFeedback : null;
   const blockedByPrompt = Boolean(feedback && feedback.blockReason);
@@ -317,13 +319,52 @@ function readGeminiPayload(data: unknown): { text: string; blocked: boolean; tru
     .map((p) => String(p.text))
     .join('');
 
-  const blockedFinish = ['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY', 'RECITATION'];
+  const blockedFinish = ['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY'];
 
   return {
     text,
     blocked: blockedByPrompt || blockedFinish.includes(finishReason),
     truncated: finishReason === 'MAX_TOKENS',
+    finishReason,
   };
+}
+
+async function callGemini(
+  model: string,
+  parts: Array<Record<string, unknown>>,
+  config: { temperature: number },
+  signal: AbortSignal,
+  apiKey: string
+): Promise<Response> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+        temperature: config.temperature,
+        maxOutputTokens: 8192,
+      },
+      safetySettings: SAFETY_SETTINGS,
+    }),
+    signal,
+  });
+}
+
+async function retryDelayFromResponse(res: Response): Promise<number | null> {
+  return res.clone().json().then((body: unknown) => {
+    if (!isRecord(body) || !isRecord(body.error) || !Array.isArray(body.error.details)) return null;
+    const retryInfo = Array.isArray(body.error.details)
+      ? body.error.details.find((detail) => isRecord(detail) && String(detail['@type'] || '').endsWith('RetryInfo'))
+      : null;
+    if (!isRecord(retryInfo) || typeof retryInfo.retryDelay !== 'string') return null;
+    const match = /^(\d+(?:\.\d+)?)s$/.exec(retryInfo.retryDelay);
+    return match ? Math.ceil(Number(match[1]) * 1000) : null;
+  }).catch(() => null);
 }
 
 async function mapGeminiHttpError(res: Response) {
@@ -517,60 +558,91 @@ export async function POST(req: NextRequest) {
     }
 
     const userText = buildUserText(mode, ocrText, correctedText);
-
-    // Recomendación de Gemini: con una sola imagen, primero la imagen y después el texto.
     const parts: Array<Record<string, unknown>> = [];
     if (image) parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
     parts.push({ text: userText });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-
+    const deadline = Date.now() + GEMINI_TIMEOUT_MS;
+    const candidateModels = Array.from(new Set([GEMINI_MODEL, 'gemini-2.0-flash', 'gemini-2.5-flash-lite']));
     let geminiRes: Response | null = null;
+    let data: unknown = null;
+    let payload = readGeminiPayload(null);
     let fetchError: unknown = null;
+    let recitationRetried = false;
+    let finalModel = '';
 
-    const candidateModels = Array.from(new Set([GEMINI_MODEL, 'gemini-2.0-flash', 'gemini-1.5-flash']));
+    outer: for (const model of candidateModels) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break outer;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), remaining);
+        try {
+          const attemptParts = parts;
+          const res = await callGemini(model, attemptParts, { temperature: 0.1 }, controller.signal, geminiKey);
+          finalModel = model;
+          console.info('[analyze] Gemini HTTP', { model, attempt, status: res.status });
 
-    try {
-      for (const model of candidateModels) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiKey,
-          },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: [{ role: 'user', parts }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              responseSchema: RESPONSE_SCHEMA,
-              temperature: 0.1,
-              maxOutputTokens: 8192,
-            },
-            safetySettings: SAFETY_SETTINGS,
-          }),
-          signal: controller.signal,
-        });
-
-        if (res.status === 404) {
-          console.warn(`[analyze] Modelo ${model} no disponible (404), intentando con modelo alternativo...`);
-          continue;
+          if (res.status === 404) {
+            console.warn('[analyze] Modelo no disponible; probando respaldo', { model, attempt, status: 404 });
+            break;
+          }
+          if ([429, 500, 503].includes(res.status)) {
+            geminiRes = res;
+            if (attempt < 3) {
+              const delay = res.status === 429 ? await retryDelayFromResponse(res) : null;
+              const waitMs = delay ?? TRANSIENT_RETRY_DELAYS_MS[attempt - 1] + Math.floor(Math.random() * 251);
+              if (Date.now() + waitMs >= deadline) break outer;
+              console.warn('[analyze] Reintentando error transitorio de Gemini', { model, attempt, status: res.status });
+              await new Promise((resolve) => setTimeout(resolve, waitMs));
+              continue;
+            }
+            break;
+          }
+          geminiRes = res;
+          if (res.ok) {
+            data = await res.json().catch(() => null);
+            payload = readGeminiPayload(data);
+            console.info('[analyze] Gemini finishReason', { model, attempt, finishReason: payload.finishReason || 'none' });
+            if (payload.finishReason === 'RECITATION' && !recitationRetried && image) {
+              recitationRetried = true;
+              const retryParts = [...parts];
+              const textIndex = retryParts.findIndex((part) => typeof part.text === 'string');
+              if (textIndex >= 0) retryParts[textIndex] = { text: `${String(retryParts[textIndex].text)}\n\n${RECITATION_RETRY_INSTRUCTION}` };
+              const retryRemaining = deadline - Date.now();
+              if (retryRemaining > 0) {
+                const retryController = new AbortController();
+                const retryTimeout = setTimeout(() => retryController.abort(), retryRemaining);
+                try {
+                  const retryRes = await callGemini(model, retryParts, { temperature: 0.5 }, retryController.signal, geminiKey);
+                  console.info('[analyze] Gemini RECITATION retry', { model, attempt, recitationAttempt: 2, status: retryRes.status });
+                  geminiRes = retryRes;
+                  if (retryRes.ok) {
+                    data = await retryRes.json().catch(() => null);
+                    payload = readGeminiPayload(data);
+                    console.info('[analyze] Gemini finishReason', { model, attempt: 2, finishReason: payload.finishReason || 'none' });
+                  }
+                } finally {
+                  clearTimeout(retryTimeout);
+                }
+              }
+            }
+            break outer;
+          }
+          break;
+        } catch (err) {
+          fetchError = err;
+          console.error('[analyze] Fallo de conexión con Gemini', { model, attempt, reason: err instanceof Error && err.name === 'AbortError' ? 'timeout' : 'connection' });
+          break outer;
+        } finally {
+          clearTimeout(timeout);
         }
-
-        geminiRes = res;
-        break;
       }
-    } catch (err) {
-      fetchError = err;
-    } finally {
-      clearTimeout(timeout);
+      if (geminiRes && ![404, 429, 500, 503].includes(geminiRes.status)) break;
     }
 
     if (fetchError) {
       const aborted = fetchError instanceof Error && fetchError.name === 'AbortError';
-      console.error('[analyze] Fallo de conexión con Gemini:', aborted ? 'timeout' : 'red');
       return jsonError(
         aborted ? 504 : 503,
         aborted ? 'timeout' : 'connection',
@@ -580,22 +652,43 @@ export async function POST(req: NextRequest) {
         true
       );
     }
-
     if (!geminiRes) {
-      return jsonError(
-        502,
-        'config',
-        'El modelo de análisis no está disponible en el servidor. No es un problema de tu foto.',
-        false
-      );
+      return jsonError(502, 'config', 'El modelo de análisis no está disponible en el servidor. No es un problema de tu foto.', false);
     }
+    if (!geminiRes.ok) return await mapGeminiHttpError(geminiRes);
 
-    if (!geminiRes.ok) {
-      return await mapGeminiHttpError(geminiRes);
+    if (payload.finishReason === 'RECITATION') {
+      if (ocrText.length >= 3 && deadline > Date.now()) {
+        const remaining = deadline - Date.now();
+        const ocrController = new AbortController();
+        const ocrTimeout = setTimeout(() => ocrController.abort(), remaining);
+        try {
+          const ocrPrompt = `Analizá este texto auxiliar como una transcripción posiblemente incompleta. Generá una guía provisoria y pedí siempre confirmación del texto: \"needs_confirmation\": true.\n\nTexto OCR:\n\"\"\"\n${ocrText}\n\"\"\"`;
+          const ocrRes = await callGemini(finalModel, [{ text: ocrPrompt }], { temperature: 0.1 }, ocrController.signal, geminiKey);
+          console.info('[analyze] Gemini OCR fallback', { model: finalModel, attempt: 1, status: ocrRes.status });
+          if (ocrRes.ok) {
+            const ocrData: unknown = await ocrRes.json().catch(() => null);
+            const ocrPayload = readGeminiPayload(ocrData);
+            const parsedOcr = parseJsonLoose(ocrPayload.text);
+            const ocrAnalysis = validateAnalysis(parsedOcr, 'image', '');
+            if (ocrAnalysis) {
+              ocrAnalysis.status = 'needs_review';
+              ocrAnalysis.needs_confirmation = true;
+              ocrAnalysis.recognized_text = ocrText;
+              ocrAnalysis.confidence = 'low';
+              ocrAnalysis.uncertainties = ['El análisis visual no pudo confirmarse. Revisá si este texto transcribe correctamente la consigna.'];
+              ocrAnalysis.task_instruction = '';
+              ocrAnalysis.simplified_instruction = '';
+              ocrAnalysis.steps = [];
+              return NextResponse.json(ocrAnalysis, { status: 200 });
+            }
+          }
+        } finally {
+          clearTimeout(ocrTimeout);
+        }
+      }
+      return jsonError(422, 'blocked', 'El servicio de análisis no pudo procesar esta imagen. Podés intentar de nuevo con buena luz o corregir el texto a mano.', true);
     }
-
-    const data: unknown = await geminiRes.json().catch(() => null);
-    const payload = readGeminiPayload(data);
 
     if (payload.blocked) {
       const feedback = isRecord(data) ? (data.promptFeedback as Record<string, unknown> | undefined) : undefined;
