@@ -1,0 +1,12 @@
+services:
+  piper:
+    build:
+      context: ./piper
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - piper-voices:/data
+    restart: unless-stopped
+
+volumes:
+  piper-voices:

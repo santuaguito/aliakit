@@ -17,7 +17,33 @@ Alcanza con sacarle una foto a la hoja del cuaderno o del libro: la app lee la c
 
 ## Tecnologías
 
-Next.js · TypeScript · Tailwind CSS · Google Gemini · Azure Speech · Vercel
+Next.js · TypeScript · Tailwind CSS · Google Gemini · Piper TTS · Vercel
+
+## Voz de Piper
+
+La síntesis usa Piper con las voces `es_AR-daniela-high` y `en_GB-alba-medium`. Para desarrollo local, iniciá Piper en una terminal:
+
+```sh
+sh piper/start-local.sh
+```
+
+El script instala Piper en un entorno virtual local y descarga los modelos. También podés usar Docker Compose:
+
+```sh
+docker compose -f docker-compose.piper.yml up -d --build
+```
+
+En otra terminal, iniciá la app:
+
+```sh
+npm run dev
+```
+
+La primera ejecución local instala Piper y descarga los dos modelos; puede tardar unos minutos. La API de Next.js usa `http://127.0.0.1:5000` por defecto.
+
+En Vercel, `vercel.json` declara la app Next.js y el servicio Piper como dos servicios del mismo proyecto. El enlace privado inyecta `PIPER_URL` en Next.js; el Dockerfile de producción incorpora las voces durante el build. Esto usa Vercel Services y Container Runtime, actualmente en beta. Para publicar, el proyecto Vercel debe tener habilitados estos servicios y recibir un nuevo deploy desde este repositorio.
+
+Piper requiere un servicio de inferencia con los modelos `.onnx` instalados. Consultá las licencias de cada modelo antes de distribuirlo o usarlo comercialmente; el repositorio de Piper advierte que las licencias varían entre voces.
 
 ## Autor
 
